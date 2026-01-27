@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTECH - Dashboard Performance V4.4</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
+
+    <style>
+        :root { --moov-blue: #005bac; --moov-orange: #ff9900; --sro-purple: #6f42c1; }
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', system-ui, -apple-system; }
+        .navbar { background: var(--moov-blue); border-bottom: 4px solid var(--moov-orange); }
+        .kpi-card { border-radius: 12px; border: none; color: white; padding: 20px; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.07); }
+        .bg-6h { background: #1b5e20; } .bg-12h { background: #2e7d32; }
+        .bg-24h { background: #f9a825; } .bg-over { background: #c62828; }
+        .chart-card { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); height: 450px; margin-bottom: 25px; }
+        .main-table { background: white; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); overflow: hidden; }
+        .sticky-th { position: sticky; top: 0; background: #ffffff; z-index: 10; border-bottom: 2px solid #dee2e6; }
+        .badge-sro { background-color: #f3f0ff; color: #6f42c1; font-weight: bold; border: 1px solid #dcd1ff; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark shadow-sm">
+    <div class="container-fluid">
+        <span class="navbar-brand fw-bold"><i class="fas fa-microchip me-2"></i> FTECH - PERFORMANCE V4.4</span>
+        <div id="actionBtns" style="display:none">
+            <button class="btn btn-outline-light btn-sm me-2" onclick="exportExcel()"><i class="fas fa-file-excel me-1"></i> Excel</button>
+            <button class="btn btn-warning btn-sm fw-bold" onclick="generatePPT()"><i class="fas fa-file-powerpoint me-1"></i> Export CODIR</button>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid p-4">
+    <div id="dropZone" class="card border-2 border-dashed p-5 text-center mb-4 bg-white" style="cursor:pointer; border-style: dashed !important; border-color: #ccc !important;" onclick="document.getElementById('fileIn').click()">
+        <input type="file" id="fileIn" hidden onchange="handleFile(event)">
+        <i class="fas fa-file-csv fa-4x text-primary mb-3"></i>
+        <h4 class="fw-bold">Charger le fichier de maintenance</h4>
+        <p class="text-muted">Analyse des codes SRO (KOU01, AKA01, YLO01...) et calcul des délais SLA</p>
+    </div>
+
+    <div id="dashContent" style="display:none">
+        <div class="row g-3 mb-4">
+            <div class="col-md-3"><div class="kpi-card bg-6h"><h6>SLA < 6H</h6><h2 id="k6">0</h2></div></div>
+            <div class="col-md-3"><div class="kpi-card bg-12h"><h6>6H < T < 12H</h6><h2 id="k12">0</h2></div></div>
+            <div class="col-md-3"><div class="kpi-card bg-24h"><h6>12H < T < 24H</h6><h2 id="k24">0</h2></div></div>
+            <div class="col-md-3"><div class="kpi-card bg-over"><h6>HORS DÉLAI (> 24H)</h6><h2 id="kOver">0</h2></div></div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="chart-card">
+                    <h5 class="fw-bold"><i class="fas fa-layer-group text-primary me-2"></i>Classement TOP 10 SRO CLIENT (Nombre de Clients)</h5>
+                    <canvas id="chartSRO"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6"><div class="chart-card"><h5>Causes du Dérangement</h5><canvas id="chartCause"></canvas></div></div>
+            <div class="col-md-3"><div class="chart-card"><h5>Villes</h5><canvas id="chartLoc"></canvas></div></div>
+            <div class="col-md-3"><div class="chart-card"><h5>Répartition %</h5><canvas id="chartPie"></canvas></div></div>
+        </div>
+
+        <div class="main-table mt-4">
+            <div class="p-3 bg-white border-bottom fw-bold text-primary d-flex justify-content-between">
+                <span>Détails des interventions par SRO</span>
+                <span id="totalTickets" class="text-muted"></span>
+            </div>
+            <div class="table-responsive" style="max-height: 400px;">
+                <table class="table table-hover table-sm align-middle mb-0">
+                    <thead class="sticky-th">
+                        <tr>
+                            <th>Ticket</th><th>Ligne</th><th>Code SRO</th><th>Ville</th><th>Délai (H)</th><th>SLA</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let processedData = [];
+let charts = {};
+
+function handleFile(e) {
+    const file = e.target.files[0];
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+        const wb = XLSX.read(evt.target.result, {type:'binary'});
+        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        process(data);
+    };
+    reader.readAsBinaryString(file);
+}
+
+function process(rows) {
+    let stats = { k6:0, k12:0, k24:0, kOver:0, locs:{}, causes:{}, sros:{} };
+    processedData = [];
+
+    rows.forEach(r => {
+        // 1. CALCUL DES DATES
+        let start = (r["Date de signalisation"] && r["Heure de signalisation"]) ? 
+                    moment(r["Date de signalisation"] + " " + r["Heure de signalisation"]) : 
+                    moment(r["Date et Heure de signalisation"]);
+        let end = moment(r["Date et heure de relève dérangement"]);
+
+        if(start.isValid() && end.isValid()) {
+            const h = end.diff(start, 'hours', true);
+            if (h >= 0) {
+                let sla = h <= 6 ? "<6h" : h <= 12 ? "6-12h" : h <= 24 ? "12-24h" : ">24h";
+                
+                if(sla === "<6h") stats.k6++;
+                else if(sla === "6-12h") stats.k12++;
+                else if(sla === "12-24h") stats.k24++;
+                else stats.kOver++;
+
+                // 2. RÉCUPÉRATION DU SRO (SRO CLIENT en majuscules)
+                // On cherche "SRO CLIENT" ou "SRO Client" par précaution
+                let sroRaw = r["SRO CLIENT"] || r["SRO Client"] || r["SRO"];
+                
+                let sroFinal = "CODE INCONNU";
+                if (sroRaw) {
+                    // .toString().trim() permet d'enlever les espaces vides autour du code (ex: " KOU01 ")
+                    sroFinal = sroRaw.toString().trim().toUpperCase();
+                }
+
+                // 3. AUTRES DONNÉES
+                const cause = r["Cause du dérangement"] || "Inconnue";
+                const loc = r["LOCALISATION"] || "N/A";
+
+                // COMPTAGE POUR LES GRAPHIQUES
+                stats.sros[sroFinal] = (stats.sros[sroFinal] || 0) + 1;
+                stats.causes[cause] = (stats.causes[cause] || 0) + 1;
+                stats.locs[loc] = (stats.locs[loc] || 0) + 1;
+
+                processedData.push({
+                    ID: r["Numéro de Requête"] || "N/A",
+                    Ligne: r["Ligne fixe"] || "N/A",
+                    SRO: sroFinal,
+                    Ville: loc,
+                    Heures: h.toFixed(1),
+                    SLA: sla
+                });
+            }
+        }
+    });
+
+    updateUI(stats);
+}
+function updateUI(s) {
+    document.getElementById('dashContent').style.display = 'block';
+    document.getElementById('actionBtns').style.display = 'block';
+    document.getElementById('k6').innerText = s.k6;
+    document.getElementById('k12').innerText = s.k12;
+    document.getElementById('k24').innerText = s.k24;
+    document.getElementById('kOver').innerText = s.kOver;
+    document.getElementById('totalTickets').innerText = `${processedData.length} dossiers analysés`;
+
+    const b = document.getElementById('tBody');
+    b.innerHTML = processedData.map(d => `
+        <tr>
+            <td><small>${d.ID}</small></td><td>${d.Ligne}</td>
+            <td><span class="badge badge-sro">${d.SRO}</span></td>
+            <td><small>${d.Ville}</small></td>
+            <td class="fw-bold">${d.Heures}h</td>
+            <td><span class="badge ${getCol(d.SLA)}">${d.SLA}</span></td>
+        </tr>`).join('');
+
+    renderCharts(s);
+}
+
+function getCol(s) {
+    if(s === "<6h") return "bg-6h";
+    if(s === "6-12h") return "bg-12h";
+    if(s === "12-24h") return "bg-24h";
+    return "bg-over";
+}
+
+function renderCharts(s) {
+    const bar = (id, dataObj, color, count, isH) => {
+        if(charts[id]) charts[id].destroy();
+        const sorted = Object.entries(dataObj).sort((a,b)=>b[1]-a[1]).slice(0, count);
+        charts[id] = new Chart(document.getElementById(id), {
+            type: 'bar',
+            data: { labels: sorted.map(x=>x[0]), datasets: [{data: sorted.map(x=>x[1]), backgroundColor: color, borderRadius: 4}] },
+            options: { indexAxis: isH ? 'y' : 'x', maintainAspectRatio: false, plugins: {legend:{display:false}} }
+        });
+    };
+
+    bar('chartSRO', s.sros, '#6f42c1', 10, true);
+    bar('chartCause', s.causes, '#ff9900', 10, true);
+    bar('chartLoc', s.locs, '#005bac', 5, false);
+
+    if(charts.pie) charts.pie.destroy();
+    charts.pie = new Chart(document.getElementById('chartPie'), {
+        type: 'doughnut',
+        data: { labels:['<6h','6-12h','12-24h','>24h'], datasets:[{data:[s.k6, s.k12, s.k24, s.kOver], backgroundColor:['#1b5e20','#2e7d32','#f9a825','#c62828']}] },
+        options: { maintainAspectRatio: false, cutout: '65%' }
+    });
+}
+
+function exportExcel() {
+    const ws = XLSX.utils.json_to_sheet(processedData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Données");
+    XLSX.writeFile(wb, "Reporting_FTECH_V4.xlsx");
+}
+
+function generatePPT() {
+    let pres = new PptxGenJS();
+    let slide = pres.addSlide();
+    slide.addText("FTECH - ANALYSE PERFORMANCE SRO", { x:0.5, y:0.5, fontSize:22, bold:true, color:'005bac' });
+    slide.addText(`Total dossiers : ${processedData.length}`, { x:0.5, y:1.2 });
+    pres.writeFile({ fileName: "Synthese_CODIR_FTECH.pptx" });
+}
+</script>
+</body>
+</html>

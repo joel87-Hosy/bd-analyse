@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FTECH - Dashboard Performance V6</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+
+    <style>
+        :root { --moov-blue: #005bac; --moov-orange: #ff9900; }
+        body { background-color: #f1f3f5; font-family: 'Segoe UI', system-ui, -apple-system; }
+        .navbar { background: var(--moov-blue); border-bottom: 4px solid var(--moov-orange); }
+        .kpi-card { border-radius: 12px; border: none; color: white; padding: 20px; text-align: center; }
+        .bg-6h { background: #1b5e20; } .bg-12h { background: #2e7d32; }
+        .bg-24h { background: #f9a825; } .bg-over { background: #c62828; }
+        .chart-card { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); height: 350px; margin-bottom: 20px; }
+        .main-table { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+        .sticky-th { position: sticky; top: 0; background: #f8f9fa; z-index: 10; font-size: 0.8rem; }
+        .incident-details { display: none; background: #fff; border-top: 3px solid var(--moov-blue); padding: 15px; font-size: 0.9rem; }
+        .nav-btn { cursor: pointer; color: var(--moov-blue); font-weight: bold; }
+    </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark shadow-sm sticky-top">
+    <div class="container-fluid">
+        <span class="navbar-brand fw-bold"><i class="fas fa-satellite-dish me-2"></i> FTECH - PERFORMANCE V6</span>
+        <div id="actionBtns" style="display:none">
+            <button class="btn btn-outline-light btn-sm me-2" onclick="sendToGmail()"><i class="fas fa-envelope"></i> Envoyer par Gmail</button>
+            <button class="btn btn-success btn-sm me-2" onclick="exportExcel()"><i class="fas fa-file-excel"></i> Excel</button>
+            <button class="btn btn-danger btn-sm" onclick="generatePPT()"><i class="fas fa-file-powerpoint"></i> PPTX</button>
+        </div>
+    </div>
+</nav>
+
+<div class="container-fluid p-4">
+    <div id="dropZone" class="card border-2 border-dashed p-5 text-center mb-4 bg-white" style="cursor:pointer" onclick="document.getElementById('fileIn').click()">
+        <input type="file" id="fileIn" hidden onchange="handleFile(event)">
+        <i class="fas fa-file-upload fa-4x text-primary mb-3"></i>
+        <h3>Importer le fichier de clôture</h3>
+        <p class="text-muted">Navigation par incident | Détails complets | Envoi Gmail</p>
+    </div>
+
+    <div id="dashContent" style="display:none">
+        <div class="row g-3 mb-4">
+            <div class="col-md-3"><div class="kpi-card bg-6h"><h6>SLA < 6H</h6><h2 id="k6">0</h2></div></div>
+            <div class="col-md-3"><div class="kpi-card bg-12h"><h6>6H - 12H</h6><h2 id="k12">0</h2></div></div>
+            <div class="col-md-3"><div class="kpi-card bg-24h"><h6>12H - 24H</h6><h2 id="k24">0</h2></div></div>
+            <div class="col-md-3"><div class="kpi-card bg-over"><h6>> 24H</h6><h2 id="kOver">0</h2></div></div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-4">
+                <div class="chart-card"><h6>Volume par Localisation</h6><canvas id="chartLoc"></canvas></div>
+            </div>
+            <div class="col-md-4">
+                <div class="chart-card"><h6>Causes Principales</h6><canvas id="chartCause"></canvas></div>
+            </div>
+            <div class="col-md-4">
+                <div class="chart-card"><h6>Répartition SLA %</h6><canvas id="chartPie"></canvas></div>
+            </div>
+        </div>
+
+        <div class="main-table">
+            <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+                <span class="fw-bold text-primary">LISTE DES INCIDENTS ET NAVIGATION DÉTAILLÉE</span>
+                <input type="text" id="searchTable" class="form-control form-control-sm w-25" placeholder="Filtrer par ligne ou client..." onkeyup="filterTable()">
+            </div>
+            <div class="table-responsive" style="max-height: 600px;">
+                <table class="table table-sm align-middle mb-0" id="dataTable">
+                    <thead class="sticky-th">
+                        <tr>
+                            <th></th>
+                            <th>Ticket</th><th>Ligne</th><th>Client</th><th>Localisation</th><th>Cause</th><th>Délai</th><th>SLA</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let processedData = [];
+let charts = {};
+
+function handleFile(e) {
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+        const wb = XLSX.read(evt.target.result, {type:'binary'});
+        const data = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        process(data);
+    };
+    reader.readAsBinaryString(e.target.files[0]);
+}
+
+function process(rows) {
+    let stats = { k6:0, k12:0, k24:0, kOver:0, locs:{}, causes:{} };
+    processedData = [];
+
+    rows.forEach((r, index) => {
+        const start = moment(r["Date de signalisation"]);
+        const end = moment(r["Date et heure de résolution"]);
+        
+        if(start.isValid() && end.isValid()) {
+            const h = end.diff(start, 'hours', true);
+            let sla = h <= 6 ? "<6h" : h <= 12 ? "6-12h" : h <= 24 ? "12-24h" : ">24h";
+
+            if(h <= 6) stats.k6++; else if(h <= 12) stats.k12++; else if(h <= 24) stats.k24++; else stats.kOver++;
+
+            const loc = r["LOCALISATION"] || "N/A";
+            const cause = r["Cause du dérangement"] || "Inconnue";
+
+            stats.locs[loc] = (stats.locs[loc] || 0) + 1;
+            stats.causes[cause] = (stats.causes[cause] || 0) + 1;
+
+            processedData.push({
+                ID: r["Numéro de Requête"],
+                Ligne: r["Ligne fixe"],
+                Client: r["Nom du client MBS"],
+                Ville: loc,
+                Cause: cause,
+                Heures: h.toFixed(1),
+                SLA: sla,
+                Details: r // On garde tout l'objet pour la navigation
+            });
+        }
+    });
+    updateUI(stats);
+}
+
+function updateUI(s) {
+    document.getElementById('dashContent').style.display = 'block';
+    document.getElementById('actionBtns').style.display = 'block';
+    document.getElementById('k6').innerText = s.k6;
+    document.getElementById('k12').innerText = s.k12;
+    document.getElementById('k24').innerText = s.k24;
+    document.getElementById('kOver').innerText = s.kOver;
+
+    const b = document.getElementById('tBody');
+    b.innerHTML = processedData.map((d, i) => `
+        <tr onclick="toggleDetails(${i})" style="cursor:pointer">
+            <td><i class="fas fa-chevron-right text-muted" id="icon-${i}"></i></td>
+            <td><small class="fw-bold">${d.ID}</small></td>
+            <td>${d.Ligne}</td>
+            <td><small>${d.Client}</small></td>
+            <td>${d.Ville}</td>
+            <td><small>${d.Cause}</small></td>
+            <td class="fw-bold">${d.Heures}h</td>
+            <td><span class="badge ${getCol(d.SLA)}">${d.SLA}</span></td>
+        </tr>
+        <tr id="details-${i}" class="incident-details">
+            <td colspan="8">
+                <div class="row p-2 bg-light rounded shadow-sm border mx-1">
+                    <div class="col-md-4">
+                        <b>Infos Client:</b><br>Contact: ${d.Details["CONTACT CLIENT 1"] || 'N/A'}<br>SRO: ${d.Details["SRO CLIENT"] || 'N/A'}
+                    </div>
+                    <div class="col-md-4">
+                        <b>Intervention:</b><br>Equipe: ${d.Details["Equipes"] || 'N/A'}<br>Action: ${d.Details["Action de Résolution"] || 'N/A'}
+                    </div>
+                    <div class="col-md-4">
+                        <b>Dates:</b><br>Signalé: ${d.Details["Date de signalisation"]}<br>Résolu: ${d.Details["Date et heure de résolution"]}
+                    </div>
+                </div>
+            </td>
+        </tr>`).join('');
+
+    renderCharts(s);
+}
+
+function toggleDetails(i) {
+    const row = document.getElementById(`details-${i}`);
+    const icon = document.getElementById(`icon-${i}`);
+    const isVisible = row.style.display === 'table-row';
+    row.style.display = isVisible ? 'none' : 'table-row';
+    icon.className = isVisible ? 'fas fa-chevron-right text-muted' : 'fas fa-chevron-down text-primary';
+}
+
+function getCol(s) {
+    return s==="<6h" ? "bg-6h" : s==="6-12h" ? "bg-12h" : s==="12-24h" ? "bg-24h" : "bg-over";
+}
+
+function renderCharts(s) {
+    const setup = (id, dataObj, color) => {
+        if(charts[id]) charts[id].destroy();
+        const sorted = Object.entries(dataObj).sort((a,b)=>b[1]-a[1]).slice(0,5);
+        charts[id] = new Chart(document.getElementById(id), {
+            type: 'bar',
+            data: { labels: sorted.map(x=>x[0]), datasets: [{data: sorted.map(x=>x[1]), backgroundColor: color}] },
+            options: { maintainAspectRatio: false, plugins: {legend:{display:false}} }
+        });
+    };
+    setup('chartLoc', s.locs, '#005bac');
+    setup('chartCause', s.causes, '#ff9900');
+
+    if(charts.pie) charts.pie.destroy();
+    charts.pie = new Chart(document.getElementById('chartPie'), {
+        type: 'doughnut',
+        data: { labels:['<6h','6-12h','12-24h','>24h'], datasets:[{data:[s.k6, s.k12, s.k24, s.kOver], backgroundColor:['#1b5e20','#2e7d32','#f9a825','#c62828']}] },
+        options: { maintainAspectRatio:false }
+    });
+}
+
+function filterTable() {
+    let q = document.getElementById('searchTable').value.toLowerCase();
+    processedData.forEach((d, i) => {
+        let match = d.Ligne.toString().includes(q) || d.Client.toLowerCase().includes(q);
+        document.querySelectorAll(`#dataTable tbody tr`)[i*2].style.display = match ? 'table-row' : 'none';
+        document.getElementById(`details-${i}`).style.display = 'none';
+    });
+}
+
+// FONCTION GMAIL
+function sendToGmail() {
+    const subject = encodeURIComponent("Analyse Performance FTECH - Maintenance");
+    const body = encodeURIComponent(`Bonjour,\n\nVoici le résumé de l'analyse :\n- SLA < 6h : ${document.getElementById('k6').innerText}\n- SLA 6-12h : ${document.getElementById('k12').innerText}\n- SLA 12-24h : ${document.getElementById('k24').innerText}\n- Hors Délai : ${document.getElementById('kOver').innerText}\n\nCordialement.`);
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`, '_blank');
+}
+
+function exportExcel() {
+    const ws = XLSX.utils.json_to_sheet(processedData.map(({Details, ...rest}) => rest));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Analyse");
+    XLSX.writeFile(wb, "Reporting_FTECH_V6.xlsx");
+}
+
+function generatePPT() {
+    let pres = new PptxGenJS();
+    let slide = pres.addSlide();
+    slide.addText("SYNTHÈSE MAINTENANCE FTECH", { x:0.5, y:0.5, fontSize:24, color:'005bac', bold:true });
+    slide.addText(`Total : ${processedData.length} incidents traités.`, { x:0.5, y:1.5, fontSize:14 });
+    pres.writeFile({ fileName: "Reporting_CODIR_V6.pptx" });
+}
+</script>
+</body>
+</html>
