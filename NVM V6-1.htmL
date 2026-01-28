@@ -10,7 +10,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 
@@ -46,7 +46,7 @@
         <input type="file" id="fileIn" hidden onchange="handleFile(event)">
         <i class="fas fa-file-upload fa-4x text-primary mb-3"></i>
         <h3>Importer le fichier de clôture</h3>
-        <p class="text-muted">Navigation par incident | Détails complets | Envoi Gmail</p>
+        <p class="text-muted">Analyse précise | Répartition par Équipes | Export PPTX complet</p>
     </div>
 
     <div id="dashContent" style="display:none">
@@ -58,13 +58,16 @@
         </div>
 
         <div class="row">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="chart-card"><h6>Volume par Localisation</h6><canvas id="chartLoc"></canvas></div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <div class="chart-card"><h6>Causes Principales</h6><canvas id="chartCause"></canvas></div>
             </div>
-            <div class="col-md-4">
+            <div class="col-md-3">
+                <div class="chart-card"><h6>Performance Équipes</h6><canvas id="chartEquipe"></canvas></div>
+            </div>
+            <div class="col-md-3">
                 <div class="chart-card"><h6>Répartition SLA %</h6><canvas id="chartPie"></canvas></div>
             </div>
         </div>
@@ -103,35 +106,47 @@ function handleFile(e) {
     reader.readAsBinaryString(e.target.files[0]);
 }
 
+function parseDateTime(dateVal, timeVal) {
+    if (!dateVal) return moment(null);
+    let combined = dateVal;
+    if (timeVal) combined = `${dateVal} ${timeVal}`;
+    return moment(combined, ["YYYY-MM-DD HH:mm:ss", "DD/MM/YYYY HH:mm:ss", "YYYY-MM-DD", "DD/MM/YYYY"]);
+}
+
 function process(rows) {
-    let stats = { k6:0, k12:0, k24:0, kOver:0, locs:{}, causes:{} };
+    let stats = { k6:0, k12:0, k24:0, kOver:0, locs:{}, causes:{}, equipes:{} };
     processedData = [];
 
     rows.forEach((r, index) => {
-        const start = moment(r["Date de signalisation"]);
-        const end = moment(r["Date et heure de résolution"]);
+        const start = parseDateTime(r["Date et Heure de signalisation"] || r["Date de signalisation"], r["Heure de signalisation"]);
+        const end = parseDateTime(r["Date et heure de relève dérangement"] || r["Date et heure de résolution"], r["Heure de résolution"]);
         
         if(start.isValid() && end.isValid()) {
             const h = end.diff(start, 'hours', true);
-            let sla = h <= 6 ? "<6h" : h <= 12 ? "6-12h" : h <= 24 ? "12-24h" : ">24h";
-
-            if(h <= 6) stats.k6++; else if(h <= 12) stats.k12++; else if(h <= 24) stats.k24++; else stats.kOver++;
+            let sla = "";
+            if(h <= 6) { stats.k6++; sla = "<6h"; }
+            else if(h <= 12) { stats.k12++; sla = "6-12h"; }
+            else if(h <= 24) { stats.k24++; sla = "12-24h"; }
+            else { stats.kOver++; sla = ">24h"; }
 
             const loc = r["LOCALISATION"] || "N/A";
             const cause = r["Cause du dérangement"] || "Inconnue";
+            const eq = r["Equipes"] || r["equipe"] || "Non assignée";
 
             stats.locs[loc] = (stats.locs[loc] || 0) + 1;
             stats.causes[cause] = (stats.causes[cause] || 0) + 1;
+            stats.equipes[eq] = (stats.equipes[eq] || 0) + 1;
 
             processedData.push({
-                ID: r["Numéro de Requête"],
-                Ligne: r["Ligne fixe"],
-                Client: r["Nom du client MBS"],
+                ID: r["Numéro de Requête"] || r["ID"],
+                Ligne: r["Ligne fixe"] || "N/A",
+                Client: r["Nom du client MBS"] || "N/A",
                 Ville: loc,
                 Cause: cause,
+                Equipe: eq,
                 Heures: h.toFixed(1),
                 SLA: sla,
-                Details: r // On garde tout l'objet pour la navigation
+                Details: r
             });
         }
     });
@@ -165,15 +180,14 @@ function updateUI(s) {
                         <b>Infos Client:</b><br>Contact: ${d.Details["CONTACT CLIENT 1"] || 'N/A'}<br>SRO: ${d.Details["SRO CLIENT"] || 'N/A'}
                     </div>
                     <div class="col-md-4">
-                        <b>Intervention:</b><br>Equipe: ${d.Details["Equipes"] || 'N/A'}<br>Action: ${d.Details["Action de Résolution"] || 'N/A'}
+                        <b>Intervention:</b><br>Equipe: ${d.Equipe}<br>Action: ${d.Details["Action de Résolution"] || 'N/A'}
                     </div>
                     <div class="col-md-4">
-                        <b>Dates:</b><br>Signalé: ${d.Details["Date de signalisation"]}<br>Résolu: ${d.Details["Date et heure de résolution"]}
+                        <b>Dates:</b><br>Signalé: ${d.Details["Date et Heure de signalisation"] || d.Details["Date de signalisation"]}<br>Résolu: ${d.Details["Date et heure de relève dérangement"] || d.Details["Date et heure de résolution"]}
                     </div>
                 </div>
             </td>
         </tr>`).join('');
-
     renderCharts(s);
 }
 
@@ -196,30 +210,49 @@ function renderCharts(s) {
         charts[id] = new Chart(document.getElementById(id), {
             type: 'bar',
             data: { labels: sorted.map(x=>x[0]), datasets: [{data: sorted.map(x=>x[1]), backgroundColor: color}] },
-            options: { maintainAspectRatio: false, plugins: {legend:{display:false}} }
+            options: { maintainAspectRatio: false, animation: false, plugins: {legend:{display:false}} }
         });
     };
     setup('chartLoc', s.locs, '#005bac');
     setup('chartCause', s.causes, '#ff9900');
+    setup('chartEquipe', s.equipes, '#6f42c1');
 
     if(charts.pie) charts.pie.destroy();
     charts.pie = new Chart(document.getElementById('chartPie'), {
         type: 'doughnut',
-        data: { labels:['<6h','6-12h','12-24h','>24h'], datasets:[{data:[s.k6, s.k12, s.k24, s.kOver], backgroundColor:['#1b5e20','#2e7d32','#f9a825','#c62828']}] },
-        options: { maintainAspectRatio:false }
+        data: { 
+            labels:['<6h','6-12h','12-24h','>24h'], 
+            datasets:[{data:[s.k6, s.k12, s.k24, s.kOver], backgroundColor:['#1b5e20','#2e7d32','#f9a825','#c62828']}] 
+        },
+        options: { 
+            maintainAspectRatio:false,
+            animation: false,
+            plugins: {
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.label || '';
+                            let value = context.parsed;
+                            let total = context.dataset.data.reduce((a, b) => a + b, 0);
+                            return label + ': ' + ((value / total) * 100).toFixed(1) + '% (' + value + ')';
+                        }
+                    }
+                }
+            }
+        }
     });
 }
 
 function filterTable() {
     let q = document.getElementById('searchTable').value.toLowerCase();
+    const rows = document.querySelectorAll(`#dataTable tbody tr:not(.incident-details)`);
     processedData.forEach((d, i) => {
         let match = d.Ligne.toString().includes(q) || d.Client.toLowerCase().includes(q);
-        document.querySelectorAll(`#dataTable tbody tr`)[i*2].style.display = match ? 'table-row' : 'none';
+        rows[i].style.display = match ? 'table-row' : 'none';
         document.getElementById(`details-${i}`).style.display = 'none';
     });
 }
 
-// FONCTION GMAIL
 function sendToGmail() {
     const subject = encodeURIComponent("Analyse Performance FTECH - Maintenance");
     const body = encodeURIComponent(`Bonjour,\n\nVoici le résumé de l'analyse :\n- SLA < 6h : ${document.getElementById('k6').innerText}\n- SLA 6-12h : ${document.getElementById('k12').innerText}\n- SLA 12-24h : ${document.getElementById('k24').innerText}\n- Hors Délai : ${document.getElementById('kOver').innerText}\n\nCordialement.`);
@@ -233,12 +266,63 @@ function exportExcel() {
     XLSX.writeFile(wb, "Reporting_FTECH_V6.xlsx");
 }
 
+// MODIFICATION UNIQUEMENT DANS LA FONCTION generatePPT
 function generatePPT() {
-    let pres = new PptxGenJS();
-    let slide = pres.addSlide();
-    slide.addText("SYNTHÈSE MAINTENANCE FTECH", { x:0.5, y:0.5, fontSize:24, color:'005bac', bold:true });
-    slide.addText(`Total : ${processedData.length} incidents traités.`, { x:0.5, y:1.5, fontSize:14 });
-    pres.writeFile({ fileName: "Reporting_CODIR_V6.pptx" });
+   // Cette ligne gère les deux versions possibles de l'objet (PptxGenJS ou pptxgen)
+   let PptxGen = window.PptxGenJS || window.pptxgen;
+    if (!PptxGen) {
+        alert("La bibliothèque PPTX n'est pas encore chargée. Veuillez patienter ou vérifier votre connexion.");
+        return;
+    }
+    
+    let pres = new PptxGen(); 
+    pres.layout = 'LAYOUT_WIDE';
+
+    // ... (le reste de ton code de génération reste strictement le même)
+    let slide1 = pres.addSlide();
+    slide1.addText("REPORTING PERFORMANCE MAINTENANCE FTECH", { x:0.5, y:0.5, w:'90%', fontSize:28, color:'005bac', bold:true, align:'center' });
+    
+    // Ajout des SLA (KPI)
+    const kpis = [
+        { label: "SLA < 6H", val: document.getElementById('k6').innerText, col: '1b5e20' },
+        { label: "6H - 12H", val: document.getElementById('k12').innerText, col: '2e7d32' },
+        { label: "12H - 24H", val: document.getElementById('k24').innerText, col: 'f9a825' },
+        { label: "HORS DÉLAI", val: document.getElementById('kOver').innerText, col: 'c62828' }
+    ];
+
+    kpis.forEach((k, i) => {
+        slide1.addShape(pres.ShapeType.rect, { x: 0.5 + (i * 2.4), y: 1.5, w: 2.2, h: 1.2, fill: { color: k.col } });
+        slide1.addText(k.label, { x: 0.5 + (i * 2.4), y: 1.7, w: 2.2, fontSize: 12, color: 'ffffff', align: 'center' });
+        slide1.addText(k.val, { x: 0.5 + (i * 2.4), y: 2.1, w: 2.2, fontSize: 24, color: 'ffffff', bold: true, align: 'center' });
+    });
+
+    // Capturer les graphiques en images (Base64)
+    const imgLoc = document.getElementById('chartLoc').toDataURL("image/png");
+    const imgCause = document.getElementById('chartCause').toDataURL("image/png");
+    const imgEq = document.getElementById('chartEquipe').toDataURL("image/png");
+    const imgPie = document.getElementById('chartPie').toDataURL("image/png");
+
+    // SLIDE 2 : Graphiques de répartition
+    let slide2 = pres.addSlide();
+    slide2.addText("ANALYSE DES VOLUMES ET CAUSES", { x:0.5, y:0.3, fontSize:20, color:'005bac', bold:true });
+    
+    slide2.addText("Par Localisation", { x:0.5, y:0.8, fontSize:12, bold:true });
+    slide2.addImage({ data: imgLoc, x:0.5, y:1.2, w:4.5, h:2.5 });
+
+    slide2.addText("Par Causes Principales", { x:5.5, y:0.8, fontSize:12, bold:true });
+    slide2.addImage({ data: imgCause, x:5.5, y:1.2, w:4.5, h:2.5 });
+
+    // SLIDE 3 : Performance Équipes et SLA %
+    let slide3 = pres.addSlide();
+    slide3.addText("PERFORMANCE ÉQUIPES ET RÉPARTITION SLA", { x:0.5, y:0.3, fontSize:20, color:'005bac', bold:true });
+
+    slide3.addText("Volume par Équipe", { x:0.5, y:0.8, fontSize:12, bold:true });
+    slide3.addImage({ data: imgEq, x:0.5, y:1.2, w:4.5, h:3.0 });
+
+    slide3.addText("Répartition SLA (%)", { x:6.0, y:0.8, fontSize:12, bold:true });
+    slide3.addImage({ data: imgPie, x:6.0, y:1.2, w:3.5, h:3.5 });
+
+    pres.writeFile({ fileName: `Reporting_FTECH_${moment().format('DD-MM-YYYY')}.pptx` });
 }
 </script>
 </body>
