@@ -206,7 +206,6 @@ function toggleDetails(i) {
 function getCol(s) {
     return s==="<6h" ? "bg-6h" : s==="6-12h" ? "bg-12h" : s==="12-24h" ? "bg-24h" : "bg-over";
 }
-
 function renderCharts(s) {
     const commonOpts = { maintainAspectRatio: false, plugins: {legend:{display:false}} };
     
@@ -225,20 +224,41 @@ function renderCharts(s) {
     setup('chartEquipe', s.equipes, '#6f42c1');
 
     if(charts.pie) charts.pie.destroy();
+    
+    const total = s.k6 + s.k12 + s.k24 + s.kOver;
+
     charts.pie = new Chart(document.getElementById('chartPie'), {
         type: 'doughnut',
         data: { 
-            labels:['<6h','6-12h','12-24h','>24h'], 
-            datasets:[{data:[s.k6, s.k12, s.k24, s.kOver], backgroundColor:['#1b5e20','#2e7d32','#f9a825','#c62828']}] 
+            labels: [
+                `< 6h : ${((s.k6/total)*100).toFixed(1)}%`,
+                `6-12h : ${((s.k12/total)*100).toFixed(1)}%`,
+                `12-24h : ${((s.k24/total)*100).toFixed(1)}%`,
+                `> 24h : ${((s.kOver/total)*100).toFixed(1)}%`
+            ], 
+            datasets:[{
+                data:[s.k6, s.k12, s.k24, s.kOver], 
+                backgroundColor:['#1b5e20','#2e7d32','#f9a825','#c62828'],
+                borderWidth: 2
+            }] 
         },
         options: { 
-            maintainAspectRatio:false,
+            maintainAspectRatio: false,
             plugins: {
+                legend: {
+                    display: true,
+                    position: window.innerWidth < 768 ? 'bottom' : 'right',
+                    labels: {
+                        boxWidth: 15,
+                        padding: 15,
+                        font: { size: 12, weight: 'bold' },
+                        color: '#333'
+                    }
+                },
                 tooltip: {
                     callbacks: {
                         label: function(c) {
-                            const total = c.dataset.data.reduce((a, b) => a + b, 0);
-                            return `${c.label}: ${((c.parsed/total)*100).toFixed(1)}% (${c.parsed})`;
+                            return `Volume : ${c.parsed} incidents`;
                         }
                     }
                 }
@@ -246,7 +266,6 @@ function renderCharts(s) {
         }
     });
 }
-
 function filterTable() {
     let q = document.getElementById('searchTable').value.toLowerCase();
     const rows = document.querySelectorAll(`#dataTable tbody tr:not(.incident-details)`);
@@ -268,22 +287,61 @@ function exportExcel() {
     XLSX.utils.book_append_sheet(wb, ws, "Analyse");
     XLSX.writeFile(wb, "Reporting_FTECH.xlsx");
 }
-
 function generatePPT() {
     let PptxGen = window.PptxGenJS || window.pptxgen;
+    if (!PptxGen) {
+        alert("Erreur : Bibliothèque PPTX non chargée.");
+        return;
+    }
+    
     let pres = new PptxGen();
     pres.layout = 'LAYOUT_WIDE';
+
+    // --- SLIDE 1 : TITRE ET KPI ---
+    let slide1 = pres.addSlide();
+    slide1.addText("REPORTING PERFORMANCE MAINTENANCE FTECH", { x:0.5, y:0.5, w:'90%', fontSize:28, color:'005bac', bold:true, align:'center' });
     
-    let s1 = pres.addSlide();
-    s1.addText("REPORTING MAINTENANCE FTECH", { x:0.5, y:0.5, w:'90%', fontSize:24, color:'005bac', bold:true, align:'center' });
+    const kpis = [
+        { label: "SLA < 6H", val: document.getElementById('k6').innerText, col: '1b5e20' },
+        { label: "6H - 12H", val: document.getElementById('k12').innerText, col: '2e7d32' },
+        { label: "12H - 24H", val: document.getElementById('k24').innerText, col: 'f9a825' },
+        { label: "HORS DÉLAI", val: document.getElementById('kOver').innerText, col: 'c62828' }
+    ];
+
+    kpis.forEach((k, i) => {
+        slide1.addShape(pres.ShapeType.rect, { x: 0.5 + (i * 2.4), y: 1.5, w: 2.2, h: 1.2, fill: { color: k.col } });
+        slide1.addText(k.label, { x: 0.5 + (i * 2.4), y: 1.7, w: 2.2, fontSize: 12, color: 'ffffff', align: 'center' });
+        slide1.addText(k.val, { x: 0.5 + (i * 2.4), y: 2.1, w: 2.2, fontSize: 24, color: 'ffffff', bold: true, align: 'center' });
+    });
+
+    // --- SLIDE 2 : LOCALISATION ET CAUSES ---
+    let slide2 = pres.addSlide();
+    slide2.addText("ANALYSE DES VOLUMES ET CAUSES", { x:0.5, y:0.3, fontSize:20, color:'005bac', bold:true });
     
-    // Ajout KPI images ou texte
-    s1.addText(`SLA < 6h : ${document.getElementById('k6').innerText}`, { x:0.5, y:1.5, fontSize:18 });
-    
-    // Images graphiques
-    s1.addImage({ data: document.getElementById('chartPie').toDataURL("image/png"), x:6, y:1.5, w:4, h:4 });
-    
-    pres.writeFile({ fileName: `FTECH_Report.pptx` });
+    const imgLoc = document.getElementById('chartLoc').toDataURL("image/png");
+    const imgCause = document.getElementById('chartCause').toDataURL("image/png");
+
+    slide2.addText("Par Localisation", { x:0.5, y:0.8, fontSize:12, bold:true });
+    slide2.addImage({ data: imgLoc, x:0.5, y:1.2, w:4.5, h:2.5 });
+
+    slide2.addText("Par Causes Principales", { x:5.5, y:0.8, fontSize:12, bold:true });
+    slide2.addImage({ data: imgCause, x:5.5, y:1.2, w:4.5, h:2.5 });
+
+    // --- SLIDE 3 : EQUIPES ET SLA % ---
+    let slide3 = pres.addSlide();
+    slide3.addText("PERFORMANCE ÉQUIPES ET RÉPARTITION SLA", { x:0.5, y:0.3, fontSize:20, color:'005bac', bold:true });
+
+    const imgEq = document.getElementById('chartEquipe').toDataURL("image/png");
+    const imgPie = document.getElementById('chartPie').toDataURL("image/png");
+
+    slide3.addText("Volume par Équipe", { x:0.5, y:0.8, fontSize:12, bold:true });
+    slide3.addImage({ data: imgEq, x:0.5, y:1.2, w:4.5, h:3.0 });
+
+    slide3.addText("Répartition SLA (%)", { x:6.0, y:0.8, fontSize:12, bold:true });
+    slide3.addImage({ data: imgPie, x:6.0, y:1.2, w:3.5, h:3.5 });
+
+    // Sauvegarde avec nom dynamique
+    pres.writeFile({ fileName: `Reporting_FTECH_${moment().format('DD_MM_YYYY')}.pptx` });
 }
 </script>
 </body>
