@@ -11,78 +11,90 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.4/moment.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
 
     <style>
         :root { --moov-blue: #005bac; --moov-orange: #ff9900; }
-        body { background-color: #f1f3f5; font-family: 'Segoe UI', system-ui, -apple-system; }
+        body { background-color: #f1f3f5; font-family: 'Segoe UI', system-ui, -apple-system; overflow-x: hidden; }
         .navbar { background: var(--moov-blue); border-bottom: 4px solid var(--moov-orange); }
-        .kpi-card { border-radius: 12px; border: none; color: white; padding: 20px; text-align: center; }
+        
+        /* KPI Cards Responsives */
+        .kpi-card { border-radius: 12px; border: none; color: white; padding: 15px; text-align: center; margin-bottom: 10px; transition: transform 0.2s; }
+        .kpi-card:hover { transform: translateY(-5px); }
         .bg-6h { background: #1b5e20; } .bg-12h { background: #2e7d32; }
         .bg-24h { background: #f9a825; } .bg-over { background: #c62828; }
-        .chart-card { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); height: 350px; margin-bottom: 20px; }
-        .main-table { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
-        .sticky-th { position: sticky; top: 0; background: #f8f9fa; z-index: 10; font-size: 0.8rem; }
-        .incident-details { display: none; background: #fff; border-top: 3px solid var(--moov-blue); padding: 15px; font-size: 0.9rem; }
-        .nav-btn { cursor: pointer; color: var(--moov-blue); font-weight: bold; }
+        
+        /* Graphiques Responsives */
+        .chart-card { background: white; border-radius: 12px; padding: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); height: 320px; margin-bottom: 20px; }
+        
+        .main-table { background: white; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); overflow: hidden; }
+        .table-responsive { max-height: 500px; font-size: 0.85rem; }
+        .sticky-th { position: sticky; top: 0; background: #f8f9fa; z-index: 10; border-bottom: 2px solid #dee2e6; }
+        
+        .incident-details { display: none; background: #f8f9fa; border-top: 3px solid var(--moov-blue); }
+
+        /* Media Queries pour Mobile */
+        @media (max-width: 768px) {
+            .navbar-brand { font-size: 1rem; }
+            .chart-card { height: 280px; }
+            #actionBtns { flex-wrap: wrap; }
+            .btn-sm { padding: 0.25rem 0.4rem; font-size: 0.75rem; }
+        }
     </style>
 </head>
 <body>
 
 <nav class="navbar navbar-dark shadow-sm sticky-top">
-    <div class="container-fluid">
-        <span class="navbar-brand fw-bold"><i class="fas fa-satellite-dish me-2"></i> FTECH - PERFORMANCE V6</span>
-        <div id="actionBtns" style="display:none">
-            <button class="btn btn-outline-light btn-sm me-2" onclick="sendToGmail()"><i class="fas fa-envelope"></i> Envoyer par Gmail</button>
-            <button class="btn btn-success btn-sm me-2" onclick="exportExcel()"><i class="fas fa-file-excel"></i> Excel</button>
-            <button class="btn btn-danger btn-sm" onclick="generatePPT()"><i class="fas fa-file-powerpoint"></i> PPTX</button>
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+        <span class="navbar-brand fw-bold mb-0"><i class="fas fa-satellite-dish me-2"></i> FTECH V6</span>
+        <div id="actionBtns" style="display:none" class="d-flex gap-1">
+            <button class="btn btn-outline-light btn-sm" onclick="sendToGmail()" title="Gmail"><i class="fas fa-envelope"></i></button>
+            <button class="btn btn-success btn-sm" onclick="exportExcel()" title="Excel"><i class="fas fa-file-excel"></i></button>
+            <button class="btn btn-danger btn-sm" onclick="generatePPT()" title="PPTX"><i class="fas fa-file-powerpoint"></i></button>
         </div>
     </div>
 </nav>
 
-<div class="container-fluid p-4">
-    <div id="dropZone" class="card border-2 border-dashed p-5 text-center mb-4 bg-white" style="cursor:pointer" onclick="document.getElementById('fileIn').click()">
+<div class="container-fluid p-3 p-md-4">
+    <div id="dropZone" class="card border-2 border-dashed p-4 p-md-5 text-center mb-4 bg-white shadow-sm" style="cursor:pointer; border-style: dashed !important;" onclick="document.getElementById('fileIn').click()">
         <input type="file" id="fileIn" hidden onchange="handleFile(event)">
-        <i class="fas fa-file-upload fa-4x text-primary mb-3"></i>
-        <h3>Importer le fichier de clôture</h3>
-        <p class="text-muted">Analyse précise | Répartition par Équipes | Export PPTX complet</p>
+        <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+        <h4>Importer le fichier de clôture</h4>
+        <p class="text-muted d-none d-md-block">Analyse automatique des SLA, Équipes et Localisations</p>
     </div>
 
     <div id="dashContent" style="display:none">
-        <div class="row g-3 mb-4">
-            <div class="col-md-3"><div class="kpi-card bg-6h"><h6>SLA < 6H</h6><h2 id="k6">0</h2></div></div>
-            <div class="col-md-3"><div class="kpi-card bg-12h"><h6>6H - 12H</h6><h2 id="k12">0</h2></div></div>
-            <div class="col-md-3"><div class="kpi-card bg-24h"><h6>12H - 24H</h6><h2 id="k24">0</h2></div></div>
-            <div class="col-md-3"><div class="kpi-card bg-over"><h6>> 24H</h6><h2 id="kOver">0</h2></div></div>
+        <div class="row g-2 mb-4">
+            <div class="col-6 col-md-3"><div class="kpi-card bg-6h"><h6>SLA < 6H</h6><h2 id="k6">0</h2></div></div>
+            <div class="col-6 col-md-3"><div class="kpi-card bg-12h"><h6>6H-12H</h6><h2 id="k12">0</h2></div></div>
+            <div class="col-6 col-md-3"><div class="kpi-card bg-24h"><h6>12H-24H</h6><h2 id="k24">0</h2></div></div>
+            <div class="col-6 col-md-3"><div class="kpi-card bg-over"><h6>> 24H</h6><h2 id="kOver">0</h2></div></div>
         </div>
 
-        <div class="row">
-            <div class="col-md-3">
-                <div class="chart-card"><h6>Volume par Localisation</h6><canvas id="chartLoc"></canvas></div>
+        <div class="row g-3 mb-4">
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="chart-card"><h6>Villes</h6><canvas id="chartLoc"></canvas></div>
             </div>
-            <div class="col-md-3">
-                <div class="chart-card"><h6>Causes Principales</h6><canvas id="chartCause"></canvas></div>
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="chart-card"><h6>Causes</h6><canvas id="chartCause"></canvas></div>
             </div>
-            <div class="col-md-3">
-                <div class="chart-card"><h6>Performance Équipes</h6><canvas id="chartEquipe"></canvas></div>
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="chart-card"><h6>Équipes</h6><canvas id="chartEquipe"></canvas></div>
             </div>
-            <div class="col-md-3">
-                <div class="chart-card"><h6>Répartition SLA %</h6><canvas id="chartPie"></canvas></div>
+            <div class="col-12 col-sm-6 col-xl-3">
+                <div class="chart-card"><h6>SLA %</h6><canvas id="chartPie"></canvas></div>
             </div>
         </div>
 
         <div class="main-table">
-            <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
-                <span class="fw-bold text-primary">LISTE DES INCIDENTS ET NAVIGATION DÉTAILLÉE</span>
-                <input type="text" id="searchTable" class="form-control form-control-sm w-25" placeholder="Filtrer par ligne ou client..." onkeyup="filterTable()">
+            <div class="p-3 border-bottom d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                <span class="fw-bold text-primary">LISTE DES INCIDENTS</span>
+                <input type="text" id="searchTable" class="form-control form-control-sm w-100 w-md-25" placeholder="Rechercher client ou ligne..." onkeyup="filterTable()">
             </div>
-            <div class="table-responsive" style="max-height: 600px;">
-                <table class="table table-sm align-middle mb-0" id="dataTable">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="dataTable">
                     <thead class="sticky-th">
                         <tr>
-                            <th></th>
-                            <th>Ticket</th><th>Ligne</th><th>Client</th><th>Localisation</th><th>Cause</th><th>Délai</th><th>SLA</th>
+                            <th></th><th>Ticket</th><th>Ligne</th><th>Client</th><th class="d-none d-md-table-cell">Ville</th><th>Délai</th><th>SLA</th>
                         </tr>
                     </thead>
                     <tbody id="tBody"></tbody>
@@ -117,21 +129,19 @@ function process(rows) {
     let stats = { k6:0, k12:0, k24:0, kOver:0, locs:{}, causes:{}, equipes:{} };
     processedData = [];
 
-    rows.forEach((r, index) => {
+    rows.forEach(r => {
         const start = parseDateTime(r["Date et Heure de signalisation"] || r["Date de signalisation"], r["Heure de signalisation"]);
         const end = parseDateTime(r["Date et heure de relève dérangement"] || r["Date et heure de résolution"], r["Heure de résolution"]);
         
         if(start.isValid() && end.isValid()) {
             const h = end.diff(start, 'hours', true);
-            let sla = "";
-            if(h <= 6) { stats.k6++; sla = "<6h"; }
-            else if(h <= 12) { stats.k12++; sla = "6-12h"; }
-            else if(h <= 24) { stats.k24++; sla = "12-24h"; }
-            else { stats.kOver++; sla = ">24h"; }
+            let sla = h <= 6 ? "<6h" : h <= 12 ? "6-12h" : h <= 24 ? "12-24h" : ">24h";
+
+            if(h <= 6) stats.k6++; else if(h <= 12) stats.k12++; else if(h <= 24) stats.k24++; else stats.kOver++;
 
             const loc = r["LOCALISATION"] || "N/A";
             const cause = r["Cause du dérangement"] || "Inconnue";
-            const eq = r["Equipes"] || r["equipe"] || "Non assignée";
+            const eq = r["Equipes"] || r["equipe"] || "N/A";
 
             stats.locs[loc] = (stats.locs[loc] || 0) + 1;
             stats.causes[cause] = (stats.causes[cause] || 0) + 1;
@@ -155,35 +165,29 @@ function process(rows) {
 
 function updateUI(s) {
     document.getElementById('dashContent').style.display = 'block';
-    document.getElementById('actionBtns').style.display = 'block';
+    document.getElementById('actionBtns').style.display = 'flex';
     document.getElementById('k6').innerText = s.k6;
     document.getElementById('k12').innerText = s.k12;
     document.getElementById('k24').innerText = s.k24;
     document.getElementById('kOver').innerText = s.kOver;
 
-    const b = document.getElementById('tBody');
-    b.innerHTML = processedData.map((d, i) => `
+    document.getElementById('tBody').innerHTML = processedData.map((d, i) => `
         <tr onclick="toggleDetails(${i})" style="cursor:pointer">
             <td><i class="fas fa-chevron-right text-muted" id="icon-${i}"></i></td>
             <td><small class="fw-bold">${d.ID}</small></td>
-            <td>${d.Ligne}</td>
-            <td><small>${d.Client}</small></td>
-            <td>${d.Ville}</td>
-            <td><small>${d.Cause}</small></td>
+            <td><small>${d.Ligne}</small></td>
+            <td><div style="max-width:120px" class="text-truncate">${d.Client}</div></td>
+            <td class="d-none d-md-table-cell">${d.Ville}</td>
             <td class="fw-bold">${d.Heures}h</td>
             <td><span class="badge ${getCol(d.SLA)}">${d.SLA}</span></td>
         </tr>
         <tr id="details-${i}" class="incident-details">
-            <td colspan="8">
-                <div class="row p-2 bg-light rounded shadow-sm border mx-1">
-                    <div class="col-md-4">
-                        <b>Infos Client:</b><br>Contact: ${d.Details["CONTACT CLIENT 1"] || 'N/A'}<br>SRO: ${d.Details["SRO CLIENT"] || 'N/A'}
-                    </div>
-                    <div class="col-md-4">
-                        <b>Intervention:</b><br>Equipe: ${d.Equipe}<br>Action: ${d.Details["Action de Résolution"] || 'N/A'}
-                    </div>
-                    <div class="col-md-4">
-                        <b>Dates:</b><br>Signalé: ${d.Details["Date et Heure de signalisation"] || d.Details["Date de signalisation"]}<br>Résolu: ${d.Details["Date et heure de relève dérangement"] || d.Details["Date et heure de résolution"]}
+            <td colspan="7">
+                <div class="p-3 border rounded bg-white shadow-sm mx-1 small">
+                    <div class="row">
+                        <div class="col-md-4"><b>Equipe:</b> ${d.Equipe}<br><b>Contact:</b> ${d.Details["CONTACT CLIENT 1"] || 'N/A'}</div>
+                        <div class="col-md-4"><b>Cause:</b> ${d.Cause}<br><b>Action:</b> ${d.Details["Action de Résolution"] || 'N/A'}</div>
+                        <div class="col-md-4"><b>Signalé:</b> ${d.Details["Date de signalisation"]}<br><b>Résolu:</b> ${d.Details["Date et heure de résolution"]}</div>
                     </div>
                 </div>
             </td>
@@ -204,15 +208,18 @@ function getCol(s) {
 }
 
 function renderCharts(s) {
+    const commonOpts = { maintainAspectRatio: false, plugins: {legend:{display:false}} };
+    
     const setup = (id, dataObj, color) => {
         if(charts[id]) charts[id].destroy();
         const sorted = Object.entries(dataObj).sort((a,b)=>b[1]-a[1]).slice(0,5);
         charts[id] = new Chart(document.getElementById(id), {
             type: 'bar',
             data: { labels: sorted.map(x=>x[0]), datasets: [{data: sorted.map(x=>x[1]), backgroundColor: color}] },
-            options: { maintainAspectRatio: false, animation: false, plugins: {legend:{display:false}} }
+            options: commonOpts
         });
     };
+    
     setup('chartLoc', s.locs, '#005bac');
     setup('chartCause', s.causes, '#ff9900');
     setup('chartEquipe', s.equipes, '#6f42c1');
@@ -226,15 +233,12 @@ function renderCharts(s) {
         },
         options: { 
             maintainAspectRatio:false,
-            animation: false,
             plugins: {
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
-                            let label = context.label || '';
-                            let value = context.parsed;
-                            let total = context.dataset.data.reduce((a, b) => a + b, 0);
-                            return label + ': ' + ((value / total) * 100).toFixed(1) + '% (' + value + ')';
+                        label: function(c) {
+                            const total = c.dataset.data.reduce((a, b) => a + b, 0);
+                            return `${c.label}: ${((c.parsed/total)*100).toFixed(1)}% (${c.parsed})`;
                         }
                     }
                 }
@@ -254,75 +258,32 @@ function filterTable() {
 }
 
 function sendToGmail() {
-    const subject = encodeURIComponent("Analyse Performance FTECH - Maintenance");
-    const body = encodeURIComponent(`Bonjour,\n\nVoici le résumé de l'analyse :\n- SLA < 6h : ${document.getElementById('k6').innerText}\n- SLA 6-12h : ${document.getElementById('k12').innerText}\n- SLA 12-24h : ${document.getElementById('k24').innerText}\n- Hors Délai : ${document.getElementById('kOver').innerText}\n\nCordialement.`);
-    window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=${subject}&body=${body}`, '_blank');
+    const body = encodeURIComponent(`Résumé :\nSLA < 6h : ${document.getElementById('k6').innerText}\nHors Délai : ${document.getElementById('kOver').innerText}`);
+    window.open(`https://mail.google.com/mail/?view=cm&fs=1&su=Reporting_FTECH&body=${body}`, '_blank');
 }
 
 function exportExcel() {
     const ws = XLSX.utils.json_to_sheet(processedData.map(({Details, ...rest}) => rest));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Analyse");
-    XLSX.writeFile(wb, "Reporting_FTECH_V6.xlsx");
+    XLSX.writeFile(wb, "Reporting_FTECH.xlsx");
 }
 
-// MODIFICATION UNIQUEMENT DANS LA FONCTION generatePPT
 function generatePPT() {
-   // Cette ligne gère les deux versions possibles de l'objet (PptxGenJS ou pptxgen)
-   let PptxGen = window.PptxGenJS || window.pptxgen;
-    if (!PptxGen) {
-        alert("La bibliothèque PPTX n'est pas encore chargée. Veuillez patienter ou vérifier votre connexion.");
-        return;
-    }
-    
-    let pres = new PptxGen(); 
+    let PptxGen = window.PptxGenJS || window.pptxgen;
+    let pres = new PptxGen();
     pres.layout = 'LAYOUT_WIDE';
-
-    // ... (le reste de ton code de génération reste strictement le même)
-    let slide1 = pres.addSlide();
-    slide1.addText("REPORTING PERFORMANCE MAINTENANCE FTECH", { x:0.5, y:0.5, w:'90%', fontSize:28, color:'005bac', bold:true, align:'center' });
     
-    // Ajout des SLA (KPI)
-    const kpis = [
-        { label: "SLA < 6H", val: document.getElementById('k6').innerText, col: '1b5e20' },
-        { label: "6H - 12H", val: document.getElementById('k12').innerText, col: '2e7d32' },
-        { label: "12H - 24H", val: document.getElementById('k24').innerText, col: 'f9a825' },
-        { label: "HORS DÉLAI", val: document.getElementById('kOver').innerText, col: 'c62828' }
-    ];
-
-    kpis.forEach((k, i) => {
-        slide1.addShape(pres.ShapeType.rect, { x: 0.5 + (i * 2.4), y: 1.5, w: 2.2, h: 1.2, fill: { color: k.col } });
-        slide1.addText(k.label, { x: 0.5 + (i * 2.4), y: 1.7, w: 2.2, fontSize: 12, color: 'ffffff', align: 'center' });
-        slide1.addText(k.val, { x: 0.5 + (i * 2.4), y: 2.1, w: 2.2, fontSize: 24, color: 'ffffff', bold: true, align: 'center' });
-    });
-
-    // Capturer les graphiques en images (Base64)
-    const imgLoc = document.getElementById('chartLoc').toDataURL("image/png");
-    const imgCause = document.getElementById('chartCause').toDataURL("image/png");
-    const imgEq = document.getElementById('chartEquipe').toDataURL("image/png");
-    const imgPie = document.getElementById('chartPie').toDataURL("image/png");
-
-    // SLIDE 2 : Graphiques de répartition
-    let slide2 = pres.addSlide();
-    slide2.addText("ANALYSE DES VOLUMES ET CAUSES", { x:0.5, y:0.3, fontSize:20, color:'005bac', bold:true });
+    let s1 = pres.addSlide();
+    s1.addText("REPORTING MAINTENANCE FTECH", { x:0.5, y:0.5, w:'90%', fontSize:24, color:'005bac', bold:true, align:'center' });
     
-    slide2.addText("Par Localisation", { x:0.5, y:0.8, fontSize:12, bold:true });
-    slide2.addImage({ data: imgLoc, x:0.5, y:1.2, w:4.5, h:2.5 });
-
-    slide2.addText("Par Causes Principales", { x:5.5, y:0.8, fontSize:12, bold:true });
-    slide2.addImage({ data: imgCause, x:5.5, y:1.2, w:4.5, h:2.5 });
-
-    // SLIDE 3 : Performance Équipes et SLA %
-    let slide3 = pres.addSlide();
-    slide3.addText("PERFORMANCE ÉQUIPES ET RÉPARTITION SLA", { x:0.5, y:0.3, fontSize:20, color:'005bac', bold:true });
-
-    slide3.addText("Volume par Équipe", { x:0.5, y:0.8, fontSize:12, bold:true });
-    slide3.addImage({ data: imgEq, x:0.5, y:1.2, w:4.5, h:3.0 });
-
-    slide3.addText("Répartition SLA (%)", { x:6.0, y:0.8, fontSize:12, bold:true });
-    slide3.addImage({ data: imgPie, x:6.0, y:1.2, w:3.5, h:3.5 });
-
-    pres.writeFile({ fileName: `Reporting_FTECH_${moment().format('DD-MM-YYYY')}.pptx` });
+    // Ajout KPI images ou texte
+    s1.addText(`SLA < 6h : ${document.getElementById('k6').innerText}`, { x:0.5, y:1.5, fontSize:18 });
+    
+    // Images graphiques
+    s1.addImage({ data: document.getElementById('chartPie').toDataURL("image/png"), x:6, y:1.5, w:4, h:4 });
+    
+    pres.writeFile({ fileName: `FTECH_Report.pptx` });
 }
 </script>
 </body>
